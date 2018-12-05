@@ -1811,6 +1811,20 @@ int main( int argc, char** argv ) {
    // create account
    auto createAccount = create_account_subcommand( create, true /*simple*/ );
 
+   // create token_snapshot
+   string code;
+   string symbol;
+   auto create_token_snapshot = create->add_subcommand( "token_snapshot", localized("Undetermined"), true);
+   create_token_snapshot->add_option( "contract", code, localized("The contract that operates the currency") )->required();
+   create_token_snapshot->add_option( "symbol", symbol, localized("The symbol for the currency if the contract operates multiple currencies") );
+   create_token_snapshot->set_callback([&] {
+      auto result = call(create_token_snapshot_func, fc::mutable_variant_object
+         ("code", code)
+         ("symbol", symbol.empty() ? fc::variant() : symbol)
+      );
+      std::cout << fc::json::to_pretty_string(result) << std::endl;
+   });
+
    // convert subcommand
    auto convert = app.add_subcommand("convert", localized("Pack and unpack transactions"), false); // TODO also add converting action args based on abi from here ?
    convert->require_subcommand();
@@ -1902,6 +1916,22 @@ int main( int argc, char** argv ) {
    get->add_subcommand("info", localized("Get current blockchain information"))->set_callback([] {
       std::cout << fc::json::to_pretty_string(get_info()) << std::endl;
    });
+
+   //get token_snapshot_info
+   auto get_token_snapshot_info = get->add_subcommand( "token_snapshot_info", localized("Get token snapshot file information"), true);
+   string block_num;
+   get_token_snapshot_info->add_option( "contract", code, localized("The contract that operates the currency") )->required();
+   get_token_snapshot_info->add_option( "symbol", symbol, localized("The symbol for the currency if the contract operates multiple currencies") )->required();
+   get_token_snapshot_info->add_option( "block_num", block_num, localized("Snapshot block number") )->required();
+
+   get_token_snapshot_info->set_callback([&] {
+      auto result = call(get_token_snapshot_info_func, fc::mutable_variant_object
+         ("code", code)
+         ("symbol", symbol)
+         ("block_num", block_num)
+      );
+      std::cout << fc::json::to_pretty_string(result) << std::endl;
+   });  
 
    // get block
    string blockArg;
@@ -2008,7 +2038,6 @@ int main( int argc, char** argv ) {
 
    // get table
    string scope;
-   string code;
    string table;
    string lower;
    string upper;
@@ -2075,7 +2104,6 @@ int main( int argc, char** argv ) {
 
    // currency accessors
    // get currency balance
-   string symbol;
    auto get_currency = get->add_subcommand( "currency", localized("Retrieve information related to standard currencies"), true);
    get_currency->require_subcommand();
    auto get_balance = get_currency->add_subcommand( "balance", localized("Retrieve the balance of an account for a given currency"), false);

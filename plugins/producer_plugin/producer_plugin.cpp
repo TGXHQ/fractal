@@ -8,6 +8,7 @@
 #include <eosio/chain/global_property_object.hpp>
 #include <eosio/chain/transaction_object.hpp>
 #include <eosio/chain/snapshot.hpp>
+#include <eosio/chain/token_snapshot.hpp>
 
 #include <fc/io/json.hpp>
 #include <fc/smart_ref_impl.hpp>
@@ -173,6 +174,7 @@ class producer_plugin_impl : public std::enable_shared_from_this<producer_plugin
       // keep a expected ratio between defer txn and incoming txn
       double _incoming_trx_weight = 0.0;
       double _incoming_defer_ratio = 1.0; // 1:1
+      bool _allow_use_token_snapshot = false;
 
       // path to write the snapshots to
       bfs::path _snapshots_dir;
@@ -524,6 +526,8 @@ void producer_plugin::set_program_options(
           "offset of last block producing time in microseconds. Negative number results in blocks to go out sooner, and positive number results in blocks to go out later")
          ("incoming-defer-ratio", bpo::value<double>()->default_value(1.0),
           "ratio between incoming transations and deferred transactions when both are exhausted")
+         ("allow-use-token-snapshot", bpo::bool_switch()->default_value(false),
+          "token snapshot function is allowed")
          ("snapshots-dir", bpo::value<bfs::path>()->default_value("snapshots"),
           "the location of the snapshots directory (absolute path or relative to application data dir)")
          ;
@@ -653,6 +657,8 @@ void producer_plugin::plugin_initialize(const boost::program_options::variables_
    my->_max_irreversible_block_age_us = fc::seconds(options.at("max-irreversible-block-age").as<int32_t>());
 
    my->_incoming_defer_ratio = options.at("incoming-defer-ratio").as<double>();
+
+   my->_allow_use_token_snapshot = options.at("allow-use-token-snapshot").as<bool>();
 
    if( options.count( "snapshots-dir" )) {
       auto sd = options.at( "snapshots-dir" ).as<bfs::path>();
@@ -917,6 +923,90 @@ producer_plugin::snapshot_information producer_plugin::create_snapshot() const {
    snap_out.close();
 
    return {head_id, snapshot_path};
+}
+
+producer_plugin::token_snapshot_results producer_plugin::create_token_snapshot(const token_snapshot_params& params) const {
+  
+  EOS_ASSERT( my->_allow_use_token_snapshot, token_snapshot_function_disabled,
+             "Token snapshot function is disabled");
+
+  chain::controller& chain = app().get_plugin<chain_plugin>().chain();
+
+  auto reschedule = fc::make_scoped_exit([this](){
+      my->schedule_production_loop();
+  });
+
+  if (chain.pending_block_state()) {
+      // abort the pending block
+      chain.abort_block();
+  } else {
+      reschedule.cancel();
+  }
+
+  uint32_t head_block_num = chain.fork_db_head_block_num();
+  std::string file_name = params.code.to_string() + "_" + (*params.symbol) + "_" + std::to_string(head_block_num);
+  std::string snapshot_path = (my->_snapshots_dir / fc::format_string("snapshot-${id}.bin", fc::mutable_variant_object()("id", file_name))).generic_string();
+
+  EOS_ASSERT( !fc::is_regular_file(snapshot_path), snapshot_exists_exception,
+               "snapshot named ${name} already exists", ("name", snapshot_path));
+
+  auto snap_out = std::ofstream(snapshot_path, (std::ios::out | std::ios::binary));
+  auto writer = std::make_shared<token_snapshot_writer>(snap_out);
+  writer->write_file_head();
+  if(chain.write_token_snapshot(writer, params.code, (*params.symbol))){
+    writer->finalize();
+    snap_out.flush();
+    snap_out.close();
+  }else{
+      remove(snapshot_path);
+      EOS_ASSERT( false, token_snapshot_create_exception,
+             "Create token snapshot failed");
+  }
+
+  return {head_block_num, snapshot_path};
+}
+
+vector<producer_plugin::get_token_snapshot_results> producer_plugin::get_token_snapshot_info(const get_token_snapshot_params& params) const{
+
+  std::string snapshot_name = params.code.to_string() + "_" + (*params.symbol) + "_" + std::to_string(*params.block_num);
+  std::string snapshot_path = (my->_snapshots_dir / fc::format_string("snapshot-${path_half}.bin", fc::mutable_variant_object()("path_half", snapshot_name))).generic_string();
+
+  auto snap_in = std::ifstream(snapshot_path, (std::ios::in | std::ios::binary));
+  auto reader = std::make_shared<token_snapshot_reader>(snap_in);
+  reader->validate();
+  vector<get_token_snapshot_results> results;
+  get_token_snapshot(reader,results);  
+  snap_in.close();
+  return results;
+}
+
+template< typename T>
+void producer_plugin::get_token_snapshot(std::shared_ptr<T>& reader, vector<get_token_snapshot_results>& results) const{
+  reader->exceptions();
+  try{
+    std::streampos end_pos = reader->get_end_pos();
+    reader->seekg_valid_pos();
+    while(end_pos > reader->get_pos())
+    {
+      uint64_t account_value = 0;
+      reader->read((char*)&account_value,sizeof(account_value));
+
+      int64_t amount = 0;
+      reader->read((char*)&amount,sizeof(amount));
+
+      uint64_t symbol_value = 0;
+      reader->read((char*)&symbol_value,sizeof(symbol_value));
+
+      get_token_snapshot_results result;
+      result.account = chain::name(account_value).to_string();
+      result.amount = chain::asset(amount,symbol(symbol_value)).to_string();
+      result.symbol = symbol(symbol_value).name();
+      results.push_back(result);
+    }
+  }catch( const std::exception& e  ){
+    EOS_ASSERT(false, token_snapshot_IO_exception,
+                "Binary snapshot throw IO exception (${what})",("what",e.what()));
+  }
 }
 
 optional<fc::time_point> producer_plugin_impl::calculate_next_block_time(const account_name& producer_name, const block_timestamp_type& current_block_time) const {

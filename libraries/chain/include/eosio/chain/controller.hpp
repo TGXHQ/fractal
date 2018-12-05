@@ -8,6 +8,8 @@
 #include <eosio/chain/account_object.hpp>
 #include <eosio/chain/snapshot.hpp>
 
+#include <eosio/chain/asset.hpp>
+
 namespace chainbase {
    class database;
 }
@@ -16,6 +18,7 @@ namespace chainbase {
 namespace eosio { namespace chain {
 
    class authorization_manager;
+   class token_snapshot_writer;
 
    namespace resource_limits {
       class resource_limits_manager;
@@ -206,6 +209,8 @@ namespace eosio { namespace chain {
 
          sha256 calculate_integrity_hash()const;
          void write_snapshot( const snapshot_writer_ptr& snapshot )const;
+
+         bool write_token_snapshot( const std::shared_ptr<token_snapshot_writer>& snapshot, name code, std::string symbol )const;
 
          void check_contract_list( account_name code )const;
          void check_action_list( account_name code, action_name action )const;

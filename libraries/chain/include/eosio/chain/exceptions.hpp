@@ -460,6 +460,14 @@ namespace eosio { namespace chain {
                                     3170007, "The configured snapshot directory does not exist" )
       FC_DECLARE_DERIVED_EXCEPTION( snapshot_exists_exception,  producer_exception,
                                     3170008, "The requested snapshot already exists" )
+      FC_DECLARE_DERIVED_EXCEPTION( token_snapshot_create_exception,  producer_exception,
+                                    3170009, "Create token snapshot failed" )
+      FC_DECLARE_DERIVED_EXCEPTION( token_snapshot_validate_exception,  producer_exception,
+                                    3170010, "Validate token snapshot exception" )
+      FC_DECLARE_DERIVED_EXCEPTION( token_snapshot_IO_exception,  producer_exception,
+                                    3170011, "Binary snapshot throw IO exception" )
+      FC_DECLARE_DERIVED_EXCEPTION( token_snapshot_function_disabled,  producer_exception,
+                                    3170012, "Token snapshot function is disabled" )
 
    FC_DECLARE_DERIVED_EXCEPTION( reversible_blocks_exception,           chain_exception,
                                  3180000, "Reversible Blocks exception" )
@@ -519,4 +527,6 @@ namespace eosio { namespace chain {
                                  3240000, "Snapshot exception" )
       FC_DECLARE_DERIVED_EXCEPTION( snapshot_validation_exception,   snapshot_exception,
                                     3240001, "Snapshot Validation Exception" )
+      FC_DECLARE_DERIVED_EXCEPTION( snapshot_read_exception,   snapshot_exception,
+                                    3240002, "Snapshot read Exception" )
 } } // eosio::chain

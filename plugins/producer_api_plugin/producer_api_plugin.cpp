@@ -59,6 +59,9 @@ using namespace eosio;
      api_handle.call_name(); \
      eosio::detail::producer_api_plugin_response result{"ok"};
 
+#define INVOKE_V_R_T(api_handle, call_name, in_param) \
+     auto result = api_handle.call_name(fc::json::from_string(body).as<in_param>()); \
+
 
 void producer_api_plugin::plugin_startup() {
    ilog("starting producer_api_plugin");
@@ -90,6 +93,10 @@ void producer_api_plugin::plugin_startup() {
             INVOKE_R_V(producer, get_integrity_hash), 201),
        CALL(producer, producer, create_snapshot,
             INVOKE_R_V(producer, create_snapshot), 201),
+       CALL(producer, producer, create_token_snapshot,
+            INVOKE_V_R_T(producer, create_token_snapshot, producer_plugin::token_snapshot_params), 201),
+       CALL(producer, producer, get_token_snapshot_info,
+            INVOKE_V_R_T(producer, get_token_snapshot_info, producer_plugin::get_token_snapshot_params), 201),
    });
 }
 

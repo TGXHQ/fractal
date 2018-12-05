@@ -16,6 +16,7 @@
 #include <eosio/chain/authorization_manager.hpp>
 #include <eosio/chain/resource_limits.hpp>
 #include <eosio/chain/chain_snapshot.hpp>
+#include <eosio/chain/token_snapshot.hpp>
 
 #include <chainbase/chainbase.hpp>
 #include <fc/io/json.hpp>
@@ -509,6 +510,45 @@ struct controller_impl {
 
       authorization.add_to_snapshot(snapshot);
       resource_limits.add_to_snapshot(snapshot);
+   }
+
+   bool add_to_token_snapshot( const std::shared_ptr<token_snapshot_writer>& snapshot, name code, std::string symbol ) const {
+      map<name,chain::table_id_object*> t_id_map;
+      name table(N(accounts));
+
+      db.mapfind<chain::table_id_object, chain::by_code_scope_table>(code, table, t_id_map);
+      if(0 == t_id_map.size())
+      {
+          return false;
+      }
+
+      for(auto mapitr = t_id_map.begin();mapitr != t_id_map.end(); ++mapitr)
+      {
+         const auto &idx = db.get_index<chain::key_value_index, chain::by_scope_primary>();
+         decltype(mapitr->second->id) next_tid(mapitr->second->id._id + 1);
+         auto lower = idx.lower_bound(boost::make_tuple(mapitr->second->id));
+         auto upper = idx.lower_bound(boost::make_tuple(next_tid));
+
+         for (auto itr = lower; itr != upper; ++itr) {
+            EOS_ASSERT( (*itr).value.size() >= sizeof(asset), chain::asset_type_exception, "Invalid data on table");
+            eosio::chain::asset cursor;
+            fc::datastream<const char *> ds((*itr).value.data(), (*itr).value.size());
+            fc::raw::unpack(ds, cursor);
+            EOS_ASSERT( cursor.get_symbol().valid(), chain::asset_type_exception, "Invalid asset");
+            if( symbol == cursor.get_symbol().name())
+            {
+                  uint64_t account_value = mapitr->first.value;
+                  snapshot->write((char*)&account_value, sizeof(account_value));
+
+                  int64_t amount = cursor.get_amount();
+                  snapshot->write((char*)&amount, sizeof(amount));
+
+                  uint64_t symbol_value = cursor.get_symbol().value();
+                  snapshot->write((char*)&symbol_value, sizeof(symbol_value));
+            }
+         }
+      }
+      return true;
    }
 
    void read_from_snapshot( const snapshot_reader_ptr& snapshot ) {
@@ -1814,6 +1854,11 @@ sha256 controller::calculate_integrity_hash()const { try {
 void controller::write_snapshot( const snapshot_writer_ptr& snapshot ) const {
    EOS_ASSERT( !my->pending, block_validate_exception, "cannot take a consistent snapshot with a pending block" );
    return my->add_to_snapshot(snapshot);
+}
+
+bool controller::write_token_snapshot( const std::shared_ptr<token_snapshot_writer>& snapshot, name code, std::string symbol ) const {
+   EOS_ASSERT( !my->pending, block_validate_exception, "cannot take a consistent snapshot with a pending block" );
+   return my->add_to_token_snapshot(snapshot, code, symbol);
 }
 
 void controller::pop_block() {

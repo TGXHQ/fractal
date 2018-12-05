@@ -50,6 +50,28 @@ public:
       std::string          snapshot_name;
    };
 
+   struct token_snapshot_params {
+      account_name code; //contranct account
+      fc::optional<string> symbol;
+   };
+
+   struct token_snapshot_results{
+       uint32_t head_block_num;
+       std::string snapshot_path;
+   };
+
+   struct get_token_snapshot_params{
+       account_name code;
+       fc::optional<string> symbol;
+       fc::optional<uint32_t> block_num;
+   };
+
+   struct get_token_snapshot_results{
+       std::string account;
+       std::string amount;
+       std::string symbol;
+   };
+
    producer_plugin();
    virtual ~producer_plugin();
 
@@ -81,6 +103,12 @@ public:
    integrity_hash_information get_integrity_hash() const;
    snapshot_information create_snapshot() const;
 
+   token_snapshot_results create_token_snapshot(const token_snapshot_params& params) const;
+   vector<get_token_snapshot_results> get_token_snapshot_info(const get_token_snapshot_params& params) const;
+
+   template< typename T>
+   void get_token_snapshot(std::shared_ptr<T>& reader ,vector<get_token_snapshot_results>& results) const;
+
    signal<void(const chain::producer_confirmation&)> confirmed_block;
 private:
    std::shared_ptr<class producer_plugin_impl> my;
@@ -93,4 +121,7 @@ FC_REFLECT(eosio::producer_plugin::greylist_params, (accounts));
 FC_REFLECT(eosio::producer_plugin::whitelist_blacklist, (actor_whitelist)(actor_blacklist)(contract_whitelist)(contract_blacklist)(action_blacklist)(key_blacklist) )
 FC_REFLECT(eosio::producer_plugin::integrity_hash_information, (head_block_id)(integrity_hash))
 FC_REFLECT(eosio::producer_plugin::snapshot_information, (head_block_id)(snapshot_name))
-
+FC_REFLECT(eosio::producer_plugin::token_snapshot_params, (code)(symbol))
+FC_REFLECT(eosio::producer_plugin::token_snapshot_results, (head_block_num)(snapshot_path))
+FC_REFLECT(eosio::producer_plugin::get_token_snapshot_params, (code)(symbol)(block_num))
+FC_REFLECT(eosio::producer_plugin::get_token_snapshot_results, (account)(amount)(symbol))
